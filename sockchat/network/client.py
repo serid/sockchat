@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from functools import cache
 from queue import Queue, Empty
 from threading import Thread
+from typing import Optional
 
 from sockchat import common
 from sockchat.colors import username_to_color, reset_color, platform_aware_colored_username
@@ -11,7 +12,7 @@ from sockchat.network.message_channel import MessageChannel
 from sockchat.ui_provider import UiProvider
 
 
-@dataclass(init=False, eq=False, match_args=False, slots=True)
+@dataclass(init=False, eq=False)
 class Client:
     username: str
     server_address: str
@@ -21,7 +22,7 @@ class Client:
     message_counter: int
 
     # Канал связи с сервером
-    chan: MessageChannel | None
+    chan: Optional[MessageChannel]
     # Очередь сообщений присланных с сервера. Заполняется отдельным потоком
     incoming_message_queue: Queue
 
@@ -76,18 +77,18 @@ class Client:
             try:
                 while True:
                     incoming_message = self.incoming_message_queue.get_nowait()
-                    match decode_message(incoming_message):
-                        case TextMessage(username=username, text=text, id=id_):
-                            print(f"new message from {platform_aware_colored_username(username)}:", text)
+                    decoded_message = decode_message(incoming_message)
+                    if isinstance(decoded_message, TextMessage):
+                        print(f"new message from {platform_aware_colored_username(decoded_message.username)}:", decoded_message.text)
 
-                            # Подтверждение о доставке сообщения
-                            self.chan.send(encode_message(AckMessage(username, self.username, id_)))
-                        case AckMessage(text_by_username=text_by_username,
-                                        acknowledged_by_username=acknowledged_by_username, id=id_):
-                            print(f"message №{id_} delivered to "
-                                  f"{platform_aware_colored_username(acknowledged_by_username)}")
-                        case _:
-                            raise Exception()
+                        # Подтверждение о доставке сообщения
+                        self.chan.send(encode_message(
+                            AckMessage(decoded_message.username, self.username, decoded_message.id)))
+                    elif isinstance(decoded_message, AckMessage):
+                        print(f"message №{decoded_message.id} delivered to "
+                              f"{platform_aware_colored_username(decoded_message.acknowledged_by_username)}")
+                    else:
+                        raise Exception()
             except Empty:
                 pass
 

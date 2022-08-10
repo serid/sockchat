@@ -1,6 +1,7 @@
 import io
 import socket
 from threading import Lock
+from typing import Optional
 
 
 class MessageChannel:
@@ -46,7 +47,7 @@ class MessageChannel:
             except ValueError:
                 pass
 
-    def receive(self) -> str | None:
+    def receive(self) -> Optional[str]:
         with self.recv_lock:
             # Принять длину строки
             length = 0

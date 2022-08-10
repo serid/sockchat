@@ -12,7 +12,7 @@ from sockchat.util import apply_if_some
 Users = dict[str, MessageChannel]
 
 
-@dataclass(init=False, eq=False, match_args=False, slots=True)
+@dataclass(init=False, eq=False)
 class Server:
     # Сопоставление имени пользователя с каналом
     users: Users
@@ -28,36 +28,34 @@ class Server:
             data = chan.receive()
 
             # Декодирование сообщения если оно не None
-            message: Message | None = apply_if_some(decode_message, data)
+            message: Optional[Message] = apply_if_some(decode_message, data)
             if message is None or isinstance(message, DisconnectMessage):
                 chan.send(encode_message(DisconnectMessage()))
                 chan.close()
                 self.server_print(f"closed channel for {client_username}")
                 break
 
-            match message:
-                case TextMessage(username=username, text=text, id=id_):
-                    # Имя клиента в сообщении должно совпадать с именем которое использовалось при создании канала
-                    assert username == client_username
+            if isinstance(message, TextMessage):
+                # Имя клиента в сообщении должно совпадать с именем которое использовалось при создании канала
+                assert message.username == client_username
 
-                    self.server_print(f"{client_username} says: {text}")
+                self.server_print(f"{client_username} says: {message.text}")
 
-                    message_to_broadcast = TextMessage(client_username, text, id_)
+                message_to_broadcast = TextMessage(client_username, message.text, message.id)
 
-                    # Переслать сообщение всем другим пользователям
-                    with self.users_lock:
-                        for (i_username, i_channel) in self.users.items():
-                            # Пропускаем автора сообщения
-                            if i_username == client_username:
-                                continue
-                            i_channel.send(encode_message(message_to_broadcast))
-                case AckMessage(text_by_username=text_by_username,
-                                acknowledged_by_username=acknowledged_by_username, id=id_):
-                    # Переслать подтверждение автору изначального сообщения
-                    with self.users_lock:
-                        self.users[text_by_username].send(data)
-                case _:
-                    raise Exception()
+                # Переслать сообщение всем другим пользователям
+                with self.users_lock:
+                    for (i_username, i_channel) in self.users.items():
+                        # Пропускаем автора сообщения
+                        if i_username == client_username:
+                            continue
+                        i_channel.send(encode_message(message_to_broadcast))
+            elif isinstance(message, AckMessage):
+                # Переслать подтверждение автору изначального сообщения
+                with self.users_lock:
+                    self.users[message.text_by_username].send(data)
+            else:
+                raise Exception()
 
     def run(self):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -74,11 +72,11 @@ class Server:
             login_message = chan.receive()
 
             username: str
-            match decode_message(login_message):
-                case LoginMessage(name=name2):
-                    username = name2
-                case _:
-                    raise Exception()
+            decoded_message = decode_message(login_message)
+            if isinstance(decoded_message, LoginMessage):
+                username = decoded_message.name
+            else:
+                raise Exception()
             self.server_print(f"{username}: logs in with {login_message}")
 
             if username is None:

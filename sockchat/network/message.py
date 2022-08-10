@@ -11,25 +11,25 @@ class MessageType(IntEnum):
     DISCONNECT = auto()
 
 
-@dataclass(slots=True)
+@dataclass
 class Message:
     pass
 
 
-@dataclass(slots=True)
+@dataclass
 class LoginMessage(Message):
     name: str
 
 
 # id сообщения указывает порядковый номер сообщения в клиенте. id сообщений разных пользователей могут совпадать
-@dataclass(slots=True)
+@dataclass
 class TextMessage(Message):
     username: str
     text: str
     id: int
 
 
-@dataclass(slots=True)
+@dataclass
 class AckMessage(Message):
     """Подтверждение о доставке сообщения с id [id] пользователю [username]"""
     text_by_username: str  # Имя клиента который отправил изначальное сообщение
@@ -37,32 +37,30 @@ class AckMessage(Message):
     id: int  # id сообщения в клиенте [text_by_username]
 
 
-@dataclass(slots=True)
+@dataclass
 class DisconnectMessage(Message):
     pass
 
 
 def encode_message(message: Message) -> str:
-    match message:
-        case LoginMessage(name=name):
-            return dumps({"type": MessageType.LOGIN, "name": name})
-        case TextMessage(username=username, text=text, id=id_):
-            return dumps({"type": MessageType.TEXT, "username": username, "text": text, "id": id_})
-        case AckMessage(text_by_username=text_by_username, acknowledged_by_username=acknowledged_by_username, id=id_):
-            return dumps({"type": MessageType.ACK, "text_by_username": text_by_username,
-                          "acknowledged_by_username": acknowledged_by_username, "id": id_})
-        case DisconnectMessage():
-            return dumps({"type": MessageType.DISCONNECT})
+    if isinstance(message, LoginMessage):
+        return dumps({"type": MessageType.LOGIN, "name": message.name})
+    elif isinstance(message, TextMessage):
+        return dumps({"type": MessageType.TEXT, "username": message.username, "text": message.text, "id": message.id})
+    elif isinstance(message, AckMessage):
+        return dumps({"type": MessageType.ACK, "text_by_username": message.text_by_username,
+                      "acknowledged_by_username": message.acknowledged_by_username, "id": message.id})
+    elif isinstance(message, DisconnectMessage):
+        return dumps({"type": MessageType.DISCONNECT})
 
 
 def decode_message(s: str) -> Message:
     dictionary = loads(s)
-    match dictionary["type"]:
-        case MessageType.LOGIN:
-            return LoginMessage(dictionary["name"])
-        case MessageType.TEXT:
-            return TextMessage(dictionary["username"], dictionary["text"], dictionary["id"])
-        case MessageType.ACK:
-            return AckMessage(dictionary["text_by_username"], dictionary["acknowledged_by_username"], dictionary["id"])
-        case MessageType.DISCONNECT:
-            return DisconnectMessage()
+    if dictionary["type"] == MessageType.LOGIN:
+        return LoginMessage(dictionary["name"])
+    elif dictionary["type"] == MessageType.TEXT:
+        return TextMessage(dictionary["username"], dictionary["text"], dictionary["id"])
+    elif dictionary["type"] == MessageType.ACK:
+        return AckMessage(dictionary["text_by_username"], dictionary["acknowledged_by_username"], dictionary["id"])
+    elif dictionary["type"] == MessageType.DISCONNECT:
+        return DisconnectMessage()
